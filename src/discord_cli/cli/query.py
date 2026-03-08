@@ -9,7 +9,7 @@ from rich.table import Table
 
 from ..db import MessageDB
 
-console = Console()
+console = Console(stderr=True)
 
 
 @click.group("query", invoke_without_command=True)

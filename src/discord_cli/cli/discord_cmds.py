@@ -20,7 +20,7 @@ from ..client import (
 )
 from ..db import MessageDB
 
-console = Console()
+console = Console(stderr=True)
 
 
 @click.group("dc")

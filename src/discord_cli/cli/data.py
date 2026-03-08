@@ -7,7 +7,7 @@ from rich.console import Console
 
 from ..db import MessageDB
 
-console = Console()
+console = Console(stderr=True)
 
 
 @click.group("data", invoke_without_command=True)

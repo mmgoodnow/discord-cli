@@ -8,7 +8,7 @@ from .data import data_group
 from .discord_cmds import discord_group
 from .query import query_group
 
-console = Console()
+console = Console(stderr=True)
 
 
 @click.group()
