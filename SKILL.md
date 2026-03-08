@@ -1,17 +1,32 @@
 ---
 name: discord-cli
 description: Discord CLI for fetching chat history, searching messages, and AI analysis
+author: jackwener
+version: "1.0.0"
+tags:
+  - discord
+  - chat
+  - sync
+  - ai-analysis
+  - cli
 ---
 
-# discord-cli
+# discord-cli Skill
 
 CLI tool for Discord — fetch chat history, search messages, sync channels, AI analysis.
 
 ## Prerequisites
 
 - Python 3.10+
-- `uv tool install kabi-discord-cli` or clone from source
+
+```bash
+# Install
+uv tool install kabi-discord-cli
+# Or: pipx install kabi-discord-cli
+```
+
 - Token configured via `discord auth --save`
+- AI commands require `ANTHROPIC_API_KEY` env var
 
 ## Commands
 
@@ -19,7 +34,7 @@ CLI tool for Discord — fetch chat history, search messages, sync channels, AI 
 
 ```bash
 discord auth --save          # Auto-extract & save token
-discord status               # Check token validity
+discord status               # Check token validity (exit 0 = valid)
 discord whoami               # User profile
 discord whoami --json        # Raw JSON
 ```
@@ -90,4 +105,10 @@ discord summary
 - Uses Discord user token (not bot token) for read-only access
 - Rate limits are handled automatically with retry
 - Messages stored in SQLite at `~/Library/Application Support/discord-cli/messages.db`
-- AI commands require `ANTHROPIC_API_KEY` env var and `uv sync --extra ai`
+- AI commands require `ANTHROPIC_API_KEY` env var
+
+## Safety Notes
+
+- Do not ask users to share raw token values in chat logs.
+- Prefer auto-extraction via `discord auth --save` over manual token input.
+- Token is stored locally and never uploaded.
