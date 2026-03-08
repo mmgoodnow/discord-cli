@@ -22,6 +22,8 @@ def cli():
 @click.option("--save", is_flag=True, help="Save found token to .env automatically")
 def auth(save: bool):
     """Extract Discord token from local browser/Discord client."""
+    import httpx
+
     from ..auth import find_tokens, save_token_to_env
 
     console.print("[dim]Scanning for Discord tokens...[/dim]")
@@ -34,30 +36,50 @@ def auth(save: bool):
         )
         return
 
-    table = Table(title=f"Found {len(results)} token(s)")
-    table.add_column("#", style="dim", justify="right")
-    table.add_column("Source", style="cyan")
-    table.add_column("Token", style="bold")
+    console.print(f"[dim]Found {len(results)} candidate token(s), validating...[/dim]")
 
-    for i, r in enumerate(results, 1):
-        # Show only first/last 8 chars of token for safety
+    # Validate each token against the API
+    valid_token = None
+    valid_source = None
+    user_info = None
+
+    for r in results:
         token = r["token"]
-        masked = f"{token[:8]}...{token[-8:]}" if len(token) > 20 else token
-        table.add_row(str(i), r["source"], masked)
+        try:
+            resp = httpx.get(
+                "https://discord.com/api/v10/users/@me",
+                headers={"Authorization": token},
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                user_info = resp.json()
+                valid_token = token
+                valid_source = r["source"]
+                break
+        except Exception:
+            continue
 
-    console.print(table)
+    if not valid_token or not user_info:
+        console.print("[red]No valid token found. All tokens returned 401.[/red]")
+        console.print("[dim]Try logging into Discord in your browser and retry.[/dim]")
+        return
+
+    masked = f"{valid_token[:8]}...{valid_token[-8:]}"
+    username = user_info.get("username", "?")
+    global_name = user_info.get("global_name") or username
+    console.print(
+        f"[green]✓[/green] Valid token from [cyan]{valid_source}[/cyan]: {masked}"
+    )
+    console.print(
+        f"  Logged in as: [bold]{global_name}[/bold] (@{username})"
+    )
 
     if save:
-        # Use the first token found (Discord App takes priority)
-        token = results[0]["token"]
-        env_path = save_token_to_env(token)
-        console.print(
-            f"\n[green]✓[/green] Saved token from {results[0]['source']} to {env_path}"
-        )
+        env_path = save_token_to_env(valid_token)
+        console.print(f"[green]✓[/green] Saved to {env_path}")
     else:
         console.print(
-            "\n[dim]Run with --save to auto-save to .env, "
-            "or copy the token manually.[/dim]"
+            "\n[dim]Run with --save to auto-save to .env[/dim]"
         )
 
 
