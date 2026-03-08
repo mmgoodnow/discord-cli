@@ -233,5 +233,37 @@ class MessageDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def timeline(
+        self,
+        channel_id: str | None = None,
+        hours: int | None = None,
+        granularity: str = "day",
+    ) -> list[dict]:
+        """Get message count grouped by time period."""
+        if granularity == "hour":
+            time_expr = "substr(timestamp, 1, 13)"  # YYYY-MM-DDTHH
+        else:
+            time_expr = "substr(timestamp, 1, 10)"  # YYYY-MM-DD
+
+        conditions = ["1=1"]
+        params: list[Any] = []
+        if channel_id:
+            conditions.append("channel_id = ?")
+            params.append(channel_id)
+        if hours:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+            conditions.append("timestamp >= ?")
+            params.append(cutoff)
+
+        where = " AND ".join(conditions)
+        rows = self.conn.execute(
+            f"""SELECT {time_expr} as period, COUNT(*) as msg_count
+                FROM messages WHERE {where}
+                GROUP BY period
+                ORDER BY period ASC""",
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def close(self):
         self.conn.close()

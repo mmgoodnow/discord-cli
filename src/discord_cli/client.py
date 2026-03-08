@@ -200,3 +200,76 @@ async def get_guild_info(client: httpx.AsyncClient, guild_id: str) -> dict | Non
         }
     except Exception:
         return None
+
+
+async def get_me(client: httpx.AsyncClient) -> dict:
+    """Get current user info."""
+    data = await _get(client, "/users/@me")
+    created_at = snowflake_to_datetime(data["id"])
+    return {
+        "id": data["id"],
+        "username": data.get("username", "?"),
+        "global_name": data.get("global_name"),
+        "email": data.get("email"),
+        "phone": data.get("phone"),
+        "mfa_enabled": data.get("mfa_enabled", False),
+        "premium_type": data.get("premium_type", 0),
+        "created_at": created_at.isoformat(),
+    }
+
+
+async def get_user(client: httpx.AsyncClient, user_id: str) -> dict | None:
+    """Get a user's profile."""
+    try:
+        data = await _get(client, f"/users/{user_id}")
+        return {
+            "id": data["id"],
+            "username": data.get("username"),
+            "global_name": data.get("global_name"),
+            "bot": data.get("bot", False),
+            "created_at": snowflake_to_datetime(data["id"]).isoformat(),
+        }
+    except Exception:
+        return None
+
+
+async def search_guild_messages(
+    client: httpx.AsyncClient,
+    guild_id: str,
+    query: str,
+    *,
+    channel_id: str | None = None,
+    limit: int = 25,
+) -> list[dict]:
+    """Search messages in a guild using Discord's built-in search."""
+    params: dict[str, Any] = {"content": query}
+    if channel_id:
+        params["channel_id"] = channel_id
+
+    data = await _get(client, f"/guilds/{guild_id}/messages/search", **params)
+    results = []
+    for group in data.get("messages", []):
+        for msg in group:
+            if msg.get("hit"):
+                results.append(_parse_message(msg, msg.get("channel_id", "")))
+    return results[:limit]
+
+
+async def list_members(
+    client: httpx.AsyncClient,
+    guild_id: str,
+    limit: int = 100,
+) -> list[dict]:
+    """List members of a guild."""
+    data = await _get(client, f"/guilds/{guild_id}/members", limit=min(limit, 1000))
+    return [
+        {
+            "id": m["user"]["id"],
+            "username": m["user"].get("username"),
+            "global_name": m["user"].get("global_name"),
+            "nick": m.get("nick"),
+            "joined_at": m.get("joined_at"),
+            "bot": m["user"].get("bot", False),
+        }
+        for m in data
+    ]

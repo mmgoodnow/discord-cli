@@ -1,4 +1,4 @@
-"""Data commands — export, purge."""
+"""Data commands — export, purge, analyze, summary."""
 
 import json
 
@@ -82,3 +82,85 @@ def purge(channel: str, yes: bool):
     deleted = db.delete_channel(channel_id)
     db.close()
     console.print(f"[green]✓[/green] Deleted {deleted} messages")
+
+
+@data_group.command("analyze")
+@click.argument("channel")
+@click.option("--hours", type=int, default=24, help="Analyze last N hours")
+@click.option("-p", "--prompt", help="Custom analysis prompt")
+def analyze(channel: str, hours: int, prompt: str | None):
+    """Analyze channel messages with AI (Claude)."""
+    from ..analyzer import analyze_messages
+
+    db = MessageDB()
+    channel_id = db.resolve_channel_id(channel)
+
+    if channel_id is None:
+        console.print(f"[red]Channel '{channel}' not found.[/red]")
+        db.close()
+        return
+
+    channels = db.get_channels()
+    ch_name = next((c["channel_name"] for c in channels if c["channel_id"] == channel_id), channel)
+
+    msgs = db.get_recent(channel_id=channel_id, hours=hours)
+    db.close()
+
+    if not msgs:
+        console.print(f"[yellow]No messages in last {hours}h.[/yellow]")
+        return
+
+    console.print(f"[dim]Analyzing {len(msgs)} messages from #{ch_name}...[/dim]")
+    result = analyze_messages(msgs, prompt=prompt, chat_name=ch_name)
+    console.print(result)
+
+
+@data_group.command("summary")
+@click.option("-c", "--channel", help="Filter by channel name (default: all)")
+@click.option("--hours", type=int, help="Summarize last N hours (default: today)")
+def summary(channel: str | None, hours: int | None):
+    """AI summary of today's messages (or last N hours)."""
+    from collections import defaultdict
+
+    from ..analyzer import analyze_messages
+
+    db = MessageDB()
+
+    if hours:
+        channel_id = db.resolve_channel_id(channel) if channel else None
+        msgs = db.get_recent(channel_id=channel_id, hours=hours)
+    else:
+        channel_id = db.resolve_channel_id(channel) if channel else None
+        msgs = db.get_today(channel_id=channel_id)
+
+    db.close()
+
+    if not msgs:
+        console.print("[yellow]No messages to summarize.[/yellow]")
+        return
+
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for m in msgs:
+        grouped[m.get("channel_name") or "Unknown"].append(m)
+
+    console.print(f"[dim]Summarizing {len(msgs)} messages from {len(grouped)} channels...[/dim]")
+
+    parts = []
+    for ch_name, ch_msgs in sorted(grouped.items(), key=lambda x: -len(x[1])):
+        parts.append(f"\n### #{ch_name} ({len(ch_msgs)} 条)")
+        for m in ch_msgs:
+            ts = (m.get("timestamp") or "")[:19]
+            sender = m.get("sender_name") or "Unknown"
+            content = m.get("content") or ""
+            parts.append(f"[{ts}] {sender}: {content}")
+
+    combined_prompt = f"""请总结以下 {len(grouped)} 个 Discord 频道的消息：
+
+1. **每个频道的核心话题** — 简明扼要
+2. **值得关注的信息** — 有价值的链接、项目、工具、观点
+3. **整体概览** — 今天社区的整体讨论趋势
+
+请用中文回答，按频道分别总结，保持简洁有深度。"""
+
+    result = analyze_messages(msgs, prompt=combined_prompt)
+    console.print(result)

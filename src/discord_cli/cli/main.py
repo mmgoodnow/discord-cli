@@ -83,6 +83,79 @@ def auth(save: bool):
         )
 
 
+@cli.command("status")
+def status():
+    """Check if Discord token is valid."""
+    import sys
+
+    import httpx
+
+    from ..config import get_token
+
+    try:
+        token = get_token()
+    except RuntimeError as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+
+    try:
+        resp = httpx.get(
+            "https://discord.com/api/v10/users/@me",
+            headers={"Authorization": token},
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            user = resp.json()
+            name = user.get("global_name") or user.get("username", "?")
+            console.print(f"[green]✓[/green] Authenticated as [bold]{name}[/bold] (@{user.get('username')})")
+            sys.exit(0)
+        else:
+            console.print(f"[red]✗[/red] Token invalid (HTTP {resp.status_code})")
+            sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Connection error: {e}")
+        sys.exit(1)
+
+
+@cli.command("whoami")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def whoami(as_json: bool):
+    """Show detailed profile of the current user."""
+    import asyncio
+    import json
+
+    from ..client import get_client, get_me
+
+    async def _run():
+        async with get_client() as client:
+            return await get_me(client)
+
+    info = asyncio.run(_run())
+
+    if as_json:
+        console.print(json.dumps(info, ensure_ascii=False, indent=2, default=str))
+        return
+
+    premium_names = {0: "None", 1: "Nitro Classic", 2: "Nitro", 3: "Nitro Basic"}
+    table = Table(title="Discord Profile", show_header=False)
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+
+    table.add_row("Username", f"@{info['username']}")
+    if info.get("global_name"):
+        table.add_row("Display Name", info["global_name"])
+    table.add_row("ID", info["id"])
+    if info.get("email"):
+        table.add_row("Email", info["email"])
+    if info.get("phone"):
+        table.add_row("Phone", info["phone"])
+    table.add_row("MFA", "✓" if info.get("mfa_enabled") else "✗")
+    table.add_row("Nitro", premium_names.get(info.get("premium_type", 0), "?"))
+    table.add_row("Created", info.get("created_at", "?")[:10])
+
+    console.print(table)
+
+
 # Register sub-groups
 cli.add_command(discord_group, "dc")
 
