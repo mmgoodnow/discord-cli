@@ -154,6 +154,7 @@ uv build
 
 - [twitter-cli](https://github.com/jackwener/twitter-cli) — Twitter/X CLI
 - [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili CLI
+- [tg-cli](https://github.com/jackwener/tg-cli) — Telegram CLI
 - [xhs-cli](https://github.com/jackwener/xhs-cli) — 小红书 CLI
 
 ## License
