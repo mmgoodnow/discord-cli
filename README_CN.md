@@ -155,10 +155,10 @@ uv build
 
 ## 推荐项目
 
-- [twitter-cli](https://github.com/jackwener/twitter-cli) — Twitter/X CLI
-- [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili CLI
-- [tg-cli](https://github.com/jackwener/tg-cli) — Telegram CLI
-- [xhs-cli](https://github.com/jackwener/xhs-cli) — 小红书 CLI
+- [xiaohongshu-cli](https://github.com/jackwener/xiaohongshu-cli) — 小红书笔记与账号工作流 CLI
+- [twitter-cli](https://github.com/jackwener/twitter-cli) — Twitter/X 时间线、搜索与发推 CLI
+- [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili 视频、用户、搜索与动态 CLI
+- [tg-cli](https://github.com/jackwener/tg-cli) — Telegram 本地优先同步、检索与导出 CLI
 
 ## License
 

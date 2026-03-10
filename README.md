@@ -155,10 +155,10 @@ uv build
 
 ## More Projects
 
-- [twitter-cli](https://github.com/jackwener/twitter-cli) — Twitter/X CLI
-- [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili CLI
-- [tg-cli](https://github.com/jackwener/tg-cli) — Telegram CLI
-- [xhs-cli](https://github.com/jackwener/xhs-cli) — Xiaohongshu CLI
+- [xiaohongshu-cli](https://github.com/jackwener/xiaohongshu-cli) — Xiaohongshu (小红书) CLI for notes and account workflows
+- [twitter-cli](https://github.com/jackwener/twitter-cli) — Twitter/X CLI for timelines, bookmarks, and posting
+- [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili CLI for videos, users, search, and feeds
+- [tg-cli](https://github.com/jackwener/tg-cli) — Telegram CLI for local-first sync, search, and export
 
 ## License
 
