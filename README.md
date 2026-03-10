@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/jackwener/discord-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/jackwener/discord-cli/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/kabi_discord_cli.svg)](https://pypi.org/project/kabi-discord-cli/)
-[![Python versions](https://img.shields.io/pypi/pyversions/kabi_discord_cli.svg)](https://pypi.org/project/kabi-discord-cli/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 
 [中文](./README_CN.md)
