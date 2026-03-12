@@ -99,6 +99,14 @@ discord summary                                # AI summary of today
 discord summary --hours 48                     # Last 48h summary
 ```
 
+## Workflow: Before Using
+
+```bash
+# Always run this first to ensure token is valid
+discord auth --save          # Auto-extract token from browser (if needed)
+discord status               # Verify token works
+```
+
 ## Workflow: Daily Sync
 
 ```bash
