@@ -10,7 +10,7 @@ from typing import Any, AsyncGenerator
 
 import httpx
 
-from .config import API_BASE, CHROME_UA, SEC_CH_UA, get_token
+from .config import API_BASE, CHROME_UA, SEC_CH_UA, get_auth
 from .exceptions import RateLimitError
 
 # Discord epoch: 2015-01-01T00:00:00Z
@@ -32,11 +32,11 @@ def datetime_to_snowflake(dt: datetime) -> int:
 @asynccontextmanager
 async def get_client() -> AsyncGenerator[httpx.AsyncClient, None]:
     """Async context manager for an authenticated httpx client."""
-    token = get_token()
+    auth = get_auth()
     async with httpx.AsyncClient(
         base_url=API_BASE,
         headers={
-            "Authorization": token,
+            "Authorization": auth.authorization_header,
             "Content-Type": "application/json",
             "User-Agent": CHROME_UA,
             "sec-ch-ua": SEC_CH_UA,

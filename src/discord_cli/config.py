@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -47,6 +48,8 @@ _load_env()
 
 APP_NAME = "discord-cli"
 API_BASE = "https://discord.com/api/v10"
+KEYRING_SERVICE = APP_NAME
+KEYRING_BOT_TOKEN_USERNAME = "bot_token"
 
 CHROME_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -56,16 +59,55 @@ CHROME_UA = (
 SEC_CH_UA = '"Chromium";v="133", "Not(A:Brand";v="99", "Google Chrome";v="133"'
 
 
-def get_token() -> str:
-    val = os.environ.get("DISCORD_TOKEN", "")
-    if not val:
-        from .exceptions import NotAuthenticatedError
+@dataclass(frozen=True)
+class AuthConfig:
+    token: str
+    kind: str
 
-        raise NotAuthenticatedError(
-            "DISCORD_TOKEN not set. Get it from browser DevTools → "
-            "Network tab → any Discord request → Authorization header."
-        )
-    return val
+    @property
+    def authorization_header(self) -> str:
+        if self.kind == "bot":
+            return f"Bot {self.token}"
+        return self.token
+
+
+def _keyring():
+    import keyring
+
+    return keyring
+
+
+def load_bot_token() -> str | None:
+    try:
+        return _keyring().get_password(KEYRING_SERVICE, KEYRING_BOT_TOKEN_USERNAME)
+    except Exception:
+        return None
+
+
+def save_bot_token(token: str) -> None:
+    _keyring().set_password(KEYRING_SERVICE, KEYRING_BOT_TOKEN_USERNAME, token)
+
+
+def get_auth() -> AuthConfig:
+    if val := os.environ.get("DISCORD_BOT_TOKEN", ""):
+        return AuthConfig(token=val, kind="bot")
+
+    if val := load_bot_token():
+        return AuthConfig(token=val, kind="bot")
+
+    if val := os.environ.get("DISCORD_TOKEN", ""):
+        return AuthConfig(token=val, kind="user")
+
+    from .exceptions import NotAuthenticatedError
+
+    raise NotAuthenticatedError(
+        "No Discord auth configured. Run 'discord auth --bot' to save a bot token "
+        "to the OS keychain, or set DISCORD_BOT_TOKEN."
+    )
+
+
+def get_token() -> str:
+    return get_auth().token
 
 
 def get_data_dir() -> Path:

@@ -3,6 +3,7 @@
 import logging
 
 import click
+import httpx
 from rich.console import Console
 from rich.table import Table
 
@@ -29,6 +30,16 @@ def _discord_user_payload(user: dict) -> dict[str, object]:
     }
 
 
+def _validate_bot_token(token: str) -> dict:
+    resp = httpx.get(
+        "https://discord.com/api/v10/users/@me",
+        headers={"Authorization": f"Bot {token}"},
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 @click.group()
 @click.version_option(package_name="kabi-discord-cli")
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
@@ -40,11 +51,30 @@ def cli(verbose: bool):
 
 @cli.command("auth")
 @click.option("--save", is_flag=True, help="Save found token to .env automatically")
-def auth(save: bool):
+@click.option("--bot", is_flag=True, help="Prompt for a bot token and save it to the OS keychain")
+def auth(save: bool, bot: bool):
     """Extract Discord token from local browser/Discord client."""
-    import httpx
-
     from ..auth import find_tokens, save_token_to_env
+    from ..config import save_bot_token
+
+    if bot:
+        token = click.prompt("Discord bot token", hide_input=True)
+        try:
+            user_info = _validate_bot_token(token)
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            console.print(f"[red]✗[/red] Bot token invalid (HTTP {status_code})")
+            raise SystemExit(1) from None
+        except Exception as exc:
+            console.print(f"[red]✗[/red] Could not validate bot token: {exc}")
+            raise SystemExit(1) from None
+
+        save_bot_token(token)
+        username = user_info.get("username", "?")
+        global_name = user_info.get("global_name") or username
+        console.print("[green]✓[/green] Saved bot token to the OS keychain")
+        console.print(f"  Authenticated as: [bold]{global_name}[/bold] (@{username})")
+        return
 
     console.print(
         "[yellow]Warning:[/yellow] discord-cli uses a Discord user token from your local "
@@ -114,13 +144,11 @@ def status(as_json: bool, as_yaml: bool):
     """Check if Discord token is valid."""
     import sys
 
-    import httpx
-
-    from ..config import get_token
+    from ..config import get_auth
     from ..exceptions import NotAuthenticatedError
 
     try:
-        token = get_token()
+        auth = get_auth()
     except NotAuthenticatedError as e:
         if emit_structured(
             error_payload("not_authenticated", str(e)),
@@ -134,7 +162,7 @@ def status(as_json: bool, as_yaml: bool):
     try:
         resp = httpx.get(
             "https://discord.com/api/v10/users/@me",
-            headers={"Authorization": token},
+            headers={"Authorization": auth.authorization_header},
             timeout=10.0,
         )
         if resp.status_code == 200:
@@ -142,13 +170,17 @@ def status(as_json: bool, as_yaml: bool):
             payload = success_payload(
                 {
                     "authenticated": True,
+                    "auth_type": auth.kind,
                     "user": _discord_user_payload(user),
                 }
             )
             if emit_structured(payload, as_json=as_json, as_yaml=as_yaml):
                 sys.exit(0)
             name = user.get("global_name") or user.get("username", "?")
-            console.print(f"[green]✓[/green] Authenticated as [bold]{name}[/bold] (@{user.get('username')})")
+            console.print(
+                f"[green]✓[/green] Authenticated as [bold]{name}[/bold] "
+                f"(@{user.get('username')}) via {auth.kind} token"
+            )
             sys.exit(0)
         else:
             if emit_structured(

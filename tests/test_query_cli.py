@@ -141,6 +141,7 @@ def test_recent_command_rejects_ambiguous_channel_yaml(tmp_path, monkeypatch):
 def test_status_auto_yaml_when_stdout_is_not_tty(monkeypatch):
     monkeypatch.setenv("OUTPUT", "auto")
     monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setattr("discord_cli.config.load_bot_token", lambda: None)
 
     class FakeResponse:
         status_code = 200
@@ -159,7 +160,63 @@ def test_status_auto_yaml_when_stdout_is_not_tty(monkeypatch):
     assert payload["ok"] is True
     assert payload["schema_version"] == "1"
     assert payload["data"]["authenticated"] is True
+    assert payload["data"]["auth_type"] == "user"
     assert payload["data"]["user"]["username"] == "alice"
+
+
+def test_auth_bot_prompts_and_saves_to_keychain(monkeypatch):
+    saved = {}
+
+    class FakeResponse:
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {"id": "u-1", "username": "discord-bot", "global_name": "Discord Bot"}
+
+    def fake_get(*args, **kwargs):
+        assert kwargs["headers"]["Authorization"] == "Bot test-bot-token"
+        return FakeResponse()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("discord_cli.config.save_bot_token", lambda token: saved.setdefault("token", token))
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["auth", "--bot"], input="test-bot-token\n")
+
+    assert result.exit_code == 0
+    assert saved["token"] == "test-bot-token"
+    assert "Saved bot token to the OS keychain" in result.output
+
+
+def test_status_uses_saved_bot_token(monkeypatch):
+    monkeypatch.setenv("OUTPUT", "auto")
+    monkeypatch.delenv("DISCORD_TOKEN", raising=False)
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setattr("discord_cli.config.load_bot_token", lambda: "saved-bot-token")
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"id": "u-1", "username": "discord-bot", "global_name": "Discord Bot"}
+
+    def fake_get(*args, **kwargs):
+        assert kwargs["headers"]["Authorization"] == "Bot saved-bot-token"
+        return FakeResponse()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["status"])
+
+    assert result.exit_code == 0
+    payload = yaml.safe_load(result.output)
+    assert payload["ok"] is True
+    assert payload["data"]["auth_type"] == "bot"
 
 
 def test_whoami_auto_yaml_when_stdout_is_not_tty(monkeypatch):

@@ -17,13 +17,13 @@
 
 Telethon-style local-first tooling for Discord: sync messages into SQLite, search them from the terminal, export structured results, and feed them to AI agents.
 
-discord-cli uses the Discord HTTP API with a **user token** from your local session. It is meant for accounts you control, on machines you control.
+discord-cli uses the Discord HTTP API with a **bot token** saved in your OS keychain.
 
 ## Warning
 
-- discord-cli reads a Discord **user token** from your local Discord/browser session.
-- Discord may restrict or suspend accounts that automate user-token traffic.
-- Use it only on your own account and only if you understand the risk.
+- discord-cli stores a Discord **bot token** in your OS keychain by default.
+- The bot only has access to guilds and channels it has permission to read.
+- A legacy user-token extraction flow still exists, but it carries higher risk and should be avoided.
 
 ## Features
 
@@ -67,8 +67,8 @@ uv tool upgrade kabi-discord-cli
 ## Quick Start
 
 ```bash
-# Extract and save a token from your local Discord/browser session
-discord auth --save
+# Prompt for a bot token and save it to the OS keychain
+discord auth --bot
 
 # Verify auth
 discord status
@@ -94,7 +94,8 @@ discord timeline --by hour --json
 
 | Command | Description |
 |---------|-------------|
-| `auth [--save]` | Extract a token from local Discord/browser session |
+| `auth --bot` | Prompt for a bot token and save it to the OS keychain |
+| `auth [--save]` | Legacy: extract a user token from local Discord/browser session |
 | `status` | Check if the configured token is valid |
 | `whoami [--json]` | Show the current Discord profile |
 
