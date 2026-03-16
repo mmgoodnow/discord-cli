@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import json
 
 from click.testing import CliRunner
 
@@ -159,3 +160,47 @@ def test_dc_sync_all_discovers_channels_from_api(tmp_path, monkeypatch):
     assert [msg["msg_id"] for msg in stored] == ["101"]
     assert stored[0]["guild_name"] == "Dev"
     assert stored[0]["channel_name"] == "general"
+
+
+def test_dc_diagnose_reports_channels_permission_failure(monkeypatch):
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
+
+    class FakeResponse:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        async def get(self, path):
+            if path == "/users/@me":
+                return FakeResponse(200, {"id": "u-bot", "username": "testbot", "global_name": "Test Bot", "bot": True})
+            if path == "/users/@me/guilds":
+                return FakeResponse(200, [{"id": "g-1", "name": "cross-seed"}])
+            if path == "/guilds/g-1":
+                return FakeResponse(200, {"id": "g-1", "name": "cross-seed"})
+            if path == "/guilds/g-1/members/u-bot":
+                return FakeResponse(200, {"roles": ["r-1"], "nick": None})
+            if path == "/guilds/g-1/channels":
+                return FakeResponse(403, {"message": "Missing Access"})
+            raise AssertionError(path)
+
+    @asynccontextmanager
+    async def fake_get_client():
+        yield FakeClient()
+
+    monkeypatch.setattr(discord_cmds, "get_client", fake_get_client)
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["dc", "diagnose", "cross-seed", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    data = payload["data"]
+    assert data["auth_type"] == "bot"
+    assert data["resolved_guild"]["id"] == "g-1"
+    assert data["channels_probe"]["status_code"] == 403
+    assert any("lacks permission to list guild channels" in hint for hint in data["hints"])

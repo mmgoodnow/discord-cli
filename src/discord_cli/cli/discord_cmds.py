@@ -19,7 +19,13 @@ from ..client import (
     search_guild_messages,
 )
 from ..db import MessageDB
-from ._output import emit_error, emit_structured, structured_output_options
+from ._output import (
+    emit_error,
+    emit_structured,
+    error_payload,
+    structured_output_options,
+    success_payload,
+)
 
 console = Console(stderr=True)
 
@@ -152,6 +158,181 @@ def dc_channels(guild: str, as_json: bool, as_yaml: bool):
 
     console.print(table)
     console.print(f"\nTotal: {len(channels)} text channels")
+
+
+@discord_group.command("diagnose")
+@click.argument("guild")
+@structured_output_options
+def dc_diagnose(guild: str, as_json: bool, as_yaml: bool):
+    """Diagnose bot or user access to a GUILD."""
+    from ..config import get_auth
+    from ..exceptions import NotAuthenticatedError
+
+    async def _run():
+        report: dict[str, object] = {
+            "input_guild": guild,
+        }
+
+        try:
+            auth = get_auth()
+        except NotAuthenticatedError as exc:
+            return error_payload("not_authenticated", str(exc))
+
+        report["auth_type"] = auth.kind
+
+        async with get_client() as client:
+            me_resp = await client.get("/users/@me")
+            report["users_me"] = {"status_code": me_resp.status_code}
+            if me_resp.status_code != 200:
+                return error_payload(
+                    "auth_probe_failed",
+                    "Could not fetch /users/@me.",
+                    details=report,
+                )
+
+            me = me_resp.json()
+            me_id = me.get("id", "")
+            report["me"] = {
+                "id": me_id,
+                "username": me.get("username"),
+                "global_name": me.get("global_name"),
+                "bot": me.get("bot", False),
+            }
+
+            guilds_resp = await client.get("/users/@me/guilds")
+            report["users_me_guilds"] = {"status_code": guilds_resp.status_code}
+            guilds: list[dict] = []
+            if guilds_resp.status_code == 200:
+                guilds = guilds_resp.json()
+                report["guild_count"] = len(guilds)
+
+            match = None
+            if guilds:
+                if guild.isdigit():
+                    match = next((g for g in guilds if g["id"] == guild), None)
+                else:
+                    match = next((g for g in guilds if guild.lower() in g["name"].lower()), None)
+
+            if match:
+                guild_id = match["id"]
+                report["resolved_guild"] = {
+                    "id": guild_id,
+                    "name": match.get("name"),
+                    "via": "users/@me/guilds",
+                }
+            else:
+                guild_id = guild if guild.isdigit() else None
+                report["resolved_guild"] = {
+                    "id": guild_id or "",
+                    "name": match.get("name") if match else "",
+                    "via": "input" if guild_id else "unresolved",
+                }
+
+            if not guild_id:
+                return success_payload(report)
+
+            guild_resp = await client.get(f"/guilds/{guild_id}")
+            report["guild_probe"] = {"status_code": guild_resp.status_code}
+
+            member_resp = await client.get(f"/guilds/{guild_id}/members/{me_id}")
+            report["member_probe"] = {"status_code": member_resp.status_code}
+            if member_resp.status_code == 200:
+                member = member_resp.json()
+                report["member_probe"]["role_count"] = len(member.get("roles", []))
+                report["member_probe"]["nick"] = member.get("nick")
+
+            channels_resp = await client.get(f"/guilds/{guild_id}/channels")
+            report["channels_probe"] = {"status_code": channels_resp.status_code}
+            if channels_resp.status_code == 200:
+                channels = channels_resp.json()
+                report["channels_probe"]["count"] = len(channels)
+                text_channels = [ch for ch in channels if ch.get("type") in {0, 5, 15}]
+                report["channels_probe"]["text_count"] = len(text_channels)
+
+                if text_channels:
+                    sample = text_channels[0]
+                    sample_resp = await client.get(f"/channels/{sample['id']}")
+                    report["sample_channel_probe"] = {
+                        "status_code": sample_resp.status_code,
+                        "channel_id": sample["id"],
+                        "channel_name": sample.get("name"),
+                    }
+
+            hints: list[str] = []
+            channels_status = channels_resp.status_code
+            member_status = member_resp.status_code
+
+            if guilds_resp.status_code == 200 and not match and not guild.isdigit():
+                hints.append("Guild name did not match any guild returned by /users/@me/guilds.")
+            if guilds_resp.status_code == 200 and match is None and guild.isdigit():
+                hints.append("Guild ID was not present in /users/@me/guilds for this token.")
+            if member_status == 404:
+                hints.append("Authenticated user is not a member of the resolved guild.")
+            elif member_status == 403:
+                hints.append("Authenticated user could not read its own guild member record.")
+            if channels_status == 403:
+                hints.append("Authenticated user is in the guild but lacks permission to list guild channels.")
+                hints.append("Check the bot's server role and channel/category overrides for View Channels.")
+            elif channels_status == 200 and report.get("channels_probe", {}).get("text_count", 0) == 0:
+                hints.append("Guild channels were visible, but no text-style channels were returned.")
+            if guild_resp.status_code == 403:
+                hints.append("Authenticated user can see the guild in /users/@me/guilds but cannot fetch /guilds/{id}.")
+
+            report["hints"] = hints
+            return success_payload(report)
+
+    result = asyncio.run(_run())
+
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+
+    if not result.get("ok", False):
+        error = result["error"]
+        console.print(f"[red]{error['message']}[/red]")
+        return
+
+    data = result["data"]
+    table = Table(title="Guild Access Diagnosis", show_header=False)
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("Auth Type", str(data.get("auth_type", "—")))
+
+    me = data.get("me", {})
+    if me:
+        name = me.get("global_name") or me.get("username") or "?"
+        table.add_row("Me", f"{name} (@{me.get('username', '?')})")
+        table.add_row("Me ID", str(me.get("id", "—")))
+
+    resolved = data.get("resolved_guild", {})
+    if resolved:
+        table.add_row("Resolved Guild", f"{resolved.get('name') or guild} ({resolved.get('id') or 'unresolved'})")
+        table.add_row("Resolution", str(resolved.get("via", "—")))
+
+    for key, label in (
+        ("users_me", "/users/@me"),
+        ("users_me_guilds", "/users/@me/guilds"),
+        ("guild_probe", f"/guilds/{resolved.get('id') or guild}"),
+        ("member_probe", f"/guilds/{resolved.get('id') or guild}/members/@me"),
+        ("channels_probe", f"/guilds/{resolved.get('id') or guild}/channels"),
+        ("sample_channel_probe", "/channels/{sample}"),
+    ):
+        probe = data.get(key)
+        if not probe:
+            continue
+        extra = ""
+        if key == "channels_probe" and probe.get("status_code") == 200:
+            extra = f" ({probe.get('text_count', 0)} text of {probe.get('count', 0)} total)"
+        if key == "sample_channel_probe":
+            extra = f" ({probe.get('channel_name', '?')} / {probe.get('channel_id', '?')})"
+        table.add_row(label, f"{probe.get('status_code')}{extra}")
+
+    console.print(table)
+
+    hints = data.get("hints", [])
+    if hints:
+        console.print("")
+        for hint in hints:
+            console.print(f"- {hint}")
 
 
 @discord_group.command("history")
