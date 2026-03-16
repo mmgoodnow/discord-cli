@@ -219,6 +219,34 @@ def test_status_uses_saved_bot_token(monkeypatch):
     assert payload["data"]["auth_type"] == "bot"
 
 
+def test_status_prefers_explicit_user_token_over_saved_bot_token(monkeypatch):
+    monkeypatch.setenv("OUTPUT", "auto")
+    monkeypatch.setenv("DISCORD_TOKEN", "user-token")
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setattr("discord_cli.config.load_bot_token", lambda: "saved-bot-token")
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"id": "u-1", "username": "alice", "global_name": "Alice"}
+
+    def fake_get(*args, **kwargs):
+        assert kwargs["headers"]["Authorization"] == "user-token"
+        return FakeResponse()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["status"])
+
+    assert result.exit_code == 0
+    payload = yaml.safe_load(result.output)
+    assert payload["ok"] is True
+    assert payload["data"]["auth_type"] == "user"
+
+
 def test_whoami_auto_yaml_when_stdout_is_not_tty(monkeypatch):
     monkeypatch.setenv("OUTPUT", "auto")
 

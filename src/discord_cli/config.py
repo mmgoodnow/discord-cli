@@ -92,11 +92,11 @@ def get_auth() -> AuthConfig:
     if val := os.environ.get("DISCORD_BOT_TOKEN", ""):
         return AuthConfig(token=val, kind="bot")
 
-    if val := load_bot_token():
-        return AuthConfig(token=val, kind="bot")
-
     if val := os.environ.get("DISCORD_TOKEN", ""):
         return AuthConfig(token=val, kind="user")
+
+    if val := load_bot_token():
+        return AuthConfig(token=val, kind="bot")
 
     from .exceptions import NotAuthenticatedError
 
